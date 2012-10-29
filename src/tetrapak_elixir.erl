@@ -61,17 +61,7 @@ elixir_source_files() ->
 
 elixir_source_files(Pathes) ->
     lists:flatmap(fun(Path) ->
-                          case filelib:is_dir(Path) of
-                              true ->
-                                  tpk_file:walk(fun (File, Acc) ->
-                                                        case tpk_util:match("\\.ex$", File) of
-                                                            true  -> [File | Acc];
-                                                            false -> Acc
-                                                        end
-                                                end, [], Path);
-                              false ->
-                                  []
-                          end
+                          tpk_file:match_files(Path, "\\.ex$")
                   end, Pathes).
 
 mix_run(Cmd, Options) ->
