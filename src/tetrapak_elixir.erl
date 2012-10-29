@@ -6,20 +6,21 @@
 -behaviour(tetrapak_task).
 -export([run/2]).
 
--define(BUILDTASK, {"build:elixir", ?MODULE, "Compile Elixir modules", []}).
--define(APPSRCTASK, {"build:appfile", ?MODULE,"Generate the application resource file"}).
--define(ERLANGTASK, {"build:erlang", ?MODULE, "Donn't compile Erlang modules"}).
--define(DEFAULTERLANGTASK, {"build:erlang", tetrapak_task_erlc, "Compile Erlang modules", [{run_before, ["build:elixir"]}]}).
+-define(BUILDTASKS, [{"build:elixir", ?MODULE, "Compile Elixir modules"},
+                     {"clean:erlang", ?MODULE, "Delete compiled Erlang/Elixir modules"}]).
+-define(APPSRCTASK, [{"build:appfile", ?MODULE,"Generate the application resource file"}]).
+-define(ERLANGTASK, [{"build:erlang", ?MODULE, "Donn't compile Erlang modules"}]).
+-define(DEFAULTERLANGTASK, [{"build:erlang", tetrapak_task_erlc, "Compile Erlang modules", [{run_before, ["build:elixir"]}]}]).
 
 -define(Mix,'Elixir-Mix').
--define(MixTask, 'Elixir-Mix-Task').
+-define(MixCLI, 'Elixir-Mix-CLI').
 -define(ElixirCompiler, 'Elixir-Kernel-ParallelCompiler').
 
 tasks(tasks) ->
-    BuildTask = task_def(elixir_source_files() =/= [], [?BUILDTASK]),
-    AppsrcTask = task_def(filelib:is_file(tetrapak:path("mix.exs")), [?APPSRCTASK]),
+    BuildTask = task_def(elixir_source_files() =/= [], ?BUILDTASKS),
+    AppsrcTask = task_def(filelib:is_file(tetrapak:path("mix.exs")), ?APPSRCTASK),
     BuildErlang = case length(BuildTask) > 0 of
-                      true -> task_def(src_not_exists() andalso length(AppsrcTask) == 1, [?ERLANGTASK], [?DEFAULTERLANGTASK]);
+                      true -> task_def(src_not_exists() andalso length(AppsrcTask) == 1, ?ERLANGTASK, ?DEFAULTERLANGTASK);
                       false -> []
                   end,
     BuildTask ++ AppsrcTask ++ BuildErlang;
@@ -34,18 +35,24 @@ run("build:appfile", _) ->
     done;
 
 run("build:elixir", _) ->
-    application:start(elixir),
-    ?Mix:start(),
-    mix_run(<<"compile">>, []),
+    run_mix([<<"compile">>]);
     %Fun = fun(Name) ->
     %              io:format("Compiled ~s~n", [Name])
     %      end,
     %Binarys = [list_to_binary(FileName) || FileName <- elixir_source_files()],
     %?ElixirCompiler:files_to_path(Binarys, list_to_binary(tetrapak:path("ebin")), Fun),
-    done.
+
+run("clean:erlang", _) ->
+    run_mix([<<"clean">>]).
 
 % --------------------------------------------------------------------------------------------------
 % -- helpers
+
+run_mix(Args) ->
+    application:start(elixir),
+    ?Mix:start(),
+    run_mix_cmd(Args),
+    done.
 
 task_def(Check, Definition) ->
     task_def(Check, Definition, []).
@@ -64,11 +71,5 @@ elixir_source_files(Pathes) ->
                           tpk_file:match_files(Path, "\\.ex$")
                   end, Pathes).
 
-mix_run(Cmd, Options) ->
-    try ?MixTask:run(Cmd, Options) of
-        Result ->
-            Result
-    catch
-        Class:Error ->
-            tetrapak:fail("~p:~p~nstack:~p", [Class, Error, erlang:get_stacktrace()])
-    end.
+run_mix_cmd(Args) ->
+    ?MixCLI:run(Args).
