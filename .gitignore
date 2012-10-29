@@ -1,0 +1,5 @@
+/ebin/*.app
+/ebin/*.beam
+/tetrapak/.local.cache
+/dist
+*~

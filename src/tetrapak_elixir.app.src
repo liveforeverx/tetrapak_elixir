@@ -1,0 +1,7 @@
+{application, tetrapak_elixir, [
+    {description, ""},
+    {vsn, ["0.0"]},
+    {applications, [kernel, stdlib, tetrapak, elixir, mix]},
+    {registered, [tetrapak_elixir_mix]},
+    {env, []}
+]}.
