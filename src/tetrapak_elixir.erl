@@ -26,7 +26,7 @@ tasks(tasks) ->
     BuildTask ++ AppsrcTask ++ BuildErlang;
 
 tasks(before_app_exists_tasks) ->
-    [].
+    [{"new:elixir", ?MODULE, "Generate a skeleton for a new Elixir application"}].
 
 run("build:erlang", _) ->
     done;
@@ -43,7 +43,15 @@ run("build:elixir", _) ->
     %?ElixirCompiler:files_to_path(Binarys, list_to_binary(tetrapak:path("ebin")), Fun),
 
 run("clean:erlang", _) ->
-    run_mix([<<"clean">>]).
+    run_mix([<<"clean">>]);
+
+run("new:elixir", _) ->
+    case init:get_argument(app) of
+        {ok, [[Name]]} ->
+            run_mix([<<"new">>, list_to_binary(Name)]);
+        _ ->
+            io:format("No name specified, use -app option~n", [])
+    end.
 
 % --------------------------------------------------------------------------------------------------
 % -- helpers
