@@ -1,20 +1,24 @@
 -module(tetrapak_elixir).
 
 -behaviour(tetrapak_task_boot).
--export([tasks/1]).
+-export([app/0, tasks/1]).
 
 -behaviour(tetrapak_task).
 -export([run/2]).
 
--define(BUILDTASKS, [{"build:elixir", ?MODULE, "Compile Elixir modules"},
+-define(BUILDTASKS, [{"build:elixir", ?MODULE, "Compile Elixir modules", [{run_before, ["build:erlang"]}] },
                      {"clean:erlang", ?MODULE, "Delete compiled Erlang/Elixir modules"}]).
 -define(APPSRCTASK, [{"build:appfile", ?MODULE,"Generate the application resource file"}]).
 -define(ERLANGTASK, [{"build:erlang", ?MODULE, "Donn't compile Erlang modules"}]).
--define(DEFAULTERLANGTASK, [{"build:erlang", tetrapak_task_erlc, "Compile Erlang modules", [{run_before, ["build:elixir"]}]}]).
+-define(DEFAULTERLANGTASK, [{"build:erlang", tetrapak_task_erlc, "Compile Erlang modules"}]).
 
 -define(Mix,'Elixir-Mix').
 -define(MixCLI, 'Elixir-Mix-CLI').
 -define(ElixirCompiler, 'Elixir-Kernel-ParallelCompiler').
+
+app() ->
+    App = elixir_source_files() orelse filelib:is_file(tetrapak:path("mix.exs")),
+    {App, App}.
 
 tasks(tasks) ->
     BuildTask = task_def(elixir_source_files() =/= [], ?BUILDTASKS),
@@ -32,6 +36,7 @@ run("build:erlang", _) ->
     done;
 
 run("build:appfile", _) ->
+%    run_mix([<<"compile">>]);
     done;
 
 run("build:elixir", _) ->
@@ -69,15 +74,10 @@ task_def(true, Definition, _Default) -> Definition;
 task_def(false, _Definition, Default) -> Default.
 
 src_not_exists() ->
-    filelib:is_dir(tetrapak:path("src")) == false.
+    tpk_file:exists_in("src", ".erl") == false.
 
 elixir_source_files() ->
-    elixir_source_files([tetrapak:path("src"), tetrapak:path("lib")]).
-
-elixir_source_files(Pathes) ->
-    lists:flatmap(fun(Path) ->
-                          tpk_file:match_files(Path, "\\.ex$")
-                  end, Pathes).
+    tpk_file:exists_in("src", ".ex") orelse tpk_file:exists_in("lib", ".ex").
 
 run_mix_cmd(Args) ->
     ?MixCLI:run(Args).
