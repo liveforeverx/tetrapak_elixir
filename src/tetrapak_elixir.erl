@@ -4,10 +4,11 @@
 -export([app/0, tasks/1]).
 
 -behaviour(tetrapak_task).
--export([run/2]).
+-export([run/2, check/1]).
 
--define(BUILDTASKS, [{"build:elixir", ?MODULE, "Compile Elixir modules", [{run_before, ["build:erlang"]}] },
-                     {"clean:erlang", ?MODULE, "Delete compiled Erlang/Elixir modules"}]).
+-include_lib("kernel/include/file.hrl").
+
+-define(BUILDTASKS, [{"build:elixir", ?MODULE, "Compile Elixir modules", [{run_before, ["build:erlang"]}] }]).
 -define(APPSRCTASK, [{"build:appfile", ?MODULE,"Generate the application resource file"}]).
 -define(ERLANGTASK, [{"build:erlang", ?MODULE, "Donn't compile Erlang modules"}]).
 -define(DEFAULTERLANGTASK, [{"build:erlang", tetrapak_task_erlc, "Compile Erlang modules"}]).
@@ -15,6 +16,7 @@
 -define(Mix,'Elixir-Mix').
 -define(MixCLI, 'Elixir-Mix-CLI').
 -define(ElixirCompiler, 'Elixir-Kernel-ParallelCompiler').
+-define(ElixirCode, 'Elixir-Code').
 
 app() ->
     App = elixir_source_files() orelse filelib:is_file(tetrapak:path("mix.exs")),
@@ -30,42 +32,38 @@ tasks(tasks) ->
     BuildTask ++ AppsrcTask ++ BuildErlang;
 
 tasks(before_app_exists_tasks) ->
-    [{"new:elixir", ?MODULE, "Generate a skeleton for a new Elixir application"}].
+    [].
+
+check("build:elixir") ->
+    Sources = tpk_file:wildcard("lib", "*.ex"),
+    AllCompiled = [mtime(File) || File <-tpk_file:wildcard("ebin", "*.beam")],
+    SourceMTimes = [mtime(File) || File <- Sources],
+    Filter = fun(CMTime) -> [MTime || MTime <- SourceMTimes, CMTime < MTime] =/= [] end,
+    case lists:filter(Filter, AllCompiled) == [] andalso AllCompiled =/= [] of
+        true -> done;
+        _ -> {needs_run, Sources}
+    end.
 
 run("build:erlang", _) ->
     done;
 
 run("build:appfile", _) ->
-%    run_mix([<<"compile">>]);
     done;
 
-run("build:elixir", _) ->
-    run_mix([<<"compile">>]);
-    %Fun = fun(Name) ->
-    %              io:format("Compiled ~s~n", [Name])
-    %      end,
-    %Binarys = [list_to_binary(FileName) || FileName <- elixir_source_files()],
-    %?ElixirCompiler:files_to_path(Binarys, list_to_binary(tetrapak:path("ebin")), Fun),
-
-run("clean:erlang", _) ->
-    run_mix([<<"clean">>]);
-
-run("new:elixir", _) ->
-    case init:get_argument(app) of
-        {ok, [[Name]]} ->
-            run_mix([<<"new">>, list_to_binary(Name)]);
-        _ ->
-            io:format("No name specified, use -app option~n", [])
-    end.
+run("build:elixir", StringFiles) ->
+    application:start(elixir),
+    file:make_dir(tetrapak:path("ebin")),
+    CompileOptions = tetrapak:config("build.elixirc_options", []),
+    ?ElixirCode:compiler_options([{ignore_module_conflict, true} | CompileOptions]),
+    Files = [list_to_binary(File) || File <- StringFiles],
+    ?ElixirCompiler:files_to_path(Files, <<"ebin">>, fun(File) ->
+                                                             io:format("Compiling ~s~n", [File]),
+                                                             File
+                                                     end),
+    done.
 
 % --------------------------------------------------------------------------------------------------
 % -- helpers
-
-run_mix(Args) ->
-    application:start(elixir),
-    ?Mix:start(),
-    run_mix_cmd(Args),
-    done.
 
 task_def(Check, Definition) ->
     task_def(Check, Definition, []).
@@ -77,7 +75,10 @@ src_not_exists() ->
     tpk_file:exists_in("src", ".erl") == false.
 
 elixir_source_files() ->
-    tpk_file:exists_in("src", ".ex") orelse tpk_file:exists_in("lib", ".ex").
+    tpk_file:exists_in("lib", ".ex").
 
-run_mix_cmd(Args) ->
-    ?MixCLI:run(Args).
+mtime(File) ->
+    case file:read_file_info(File) of
+        {error, _} -> {{1970, 1, 1}, {0, 0, 0}};
+        {ok, #file_info{mtime = MTime}} -> MTime
+    end.
