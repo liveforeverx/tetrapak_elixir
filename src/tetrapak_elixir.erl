@@ -24,7 +24,7 @@ tasks(tasks) ->
     BuildTask = task_def(elixir_source_files() =/= [], ?BUILDTASKS),
     AppsrcTask = task_def(filelib:is_file(tetrapak:path("mix.exs")), ?APPSRCTASK),
     BuildErlang = case length(BuildTask) > 0 of
-                      true -> task_def(src_not_exists() andalso length(AppsrcTask) == 1, ?ERLANGTASK, ?DEFAULTERLANGTASK);
+                      true -> task_def(src_not_exists(), ?ERLANGTASK, ?DEFAULTERLANGTASK);
                       false -> []
                   end,
     BuildTask ++ AppsrcTask ++ BuildErlang;
@@ -70,10 +70,10 @@ task_def(true, Definition, _Default) -> Definition;
 task_def(false, _Definition, Default) -> Default.
 
 src_not_exists() ->
-    tpk_file:exists_in("src", ".erl") == false.
+    tpk_file:exists_in("src", "*.erl") == false.
 
 elixir_source_files() ->
-    tpk_file:exists_in("lib", ".ex").
+    tpk_file:exists_in("lib", "*.ex").
 
 mtime(File) ->
     case file:read_file_info(File) of
