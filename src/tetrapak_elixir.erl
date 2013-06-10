@@ -13,10 +13,8 @@
 -define(ERLANGTASK, [{"build:erlang", ?MODULE, "Donn't compile Erlang modules"}]).
 -define(DEFAULTERLANGTASK, [{"build:erlang", tetrapak_task_erlc, "Compile Erlang modules"}]).
 
--define(Mix,'Elixir-Mix').
--define(MixCLI, 'Elixir-Mix-CLI').
--define(ElixirCompiler, 'Elixir-Kernel-ParallelCompiler').
--define(ElixirCode, 'Elixir-Code').
+-define(ElixirCompiler, 'Elixir.Kernel.ParallelCompiler').
+-define(ElixirCode, 'Elixir.Code').
 
 app() ->
     App = elixir_source_files() orelse filelib:is_file(tetrapak:path("mix.exs")),
