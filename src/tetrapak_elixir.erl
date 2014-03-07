@@ -8,7 +8,7 @@
 
 -include_lib("kernel/include/file.hrl").
 
--define(BUILDTASKS, [{"build:elixir", ?MODULE, "Compile Elixir modules", [{run_before, ["build:erlang"]}] }]).
+-define(BUILDTASKS, [{"build:elixir", ?MODULE, "Compile Elixir modules"}]).
 -define(APPSRCTASK, [{"build:appfile", ?MODULE,"Generate the application resource file"}]).
 -define(ERLANGTASK, [{"build:erlang", ?MODULE, "Donn't compile Erlang modules"}]).
 -define(DEFAULTERLANGTASK, [{"build:erlang", tetrapak_task_erlc, "Compile Erlang modules"}]).
@@ -33,7 +33,8 @@ tasks(before_app_exists_tasks) ->
     [].
 
 check("build:elixir") ->
-    Sources = tpk_file:wildcard("lib", "*.ex"),
+    Sources = tpk_file:wildcard("lib", "**/*.ex"),
+    io:format(user, "sources: ~p~n", [Sources]),
     AllCompiled = [mtime(File) || File <-tpk_file:wildcard("ebin", "*.beam")],
     SourceMTimes = [mtime(File) || File <- Sources],
     Filter = fun(CMTime) -> [MTime || MTime <- SourceMTimes, CMTime < MTime] =/= [] end,
@@ -54,11 +55,17 @@ run("build:elixir", StringFiles) ->
     CompileOptions = tetrapak:config("build.elixirc_options", []),
     ?ElixirCode:compiler_options([{ignore_module_conflict, true} | CompileOptions]),
     Files = [list_to_binary(File) || File <- StringFiles],
-    ?ElixirCompiler:files_to_path(Files, <<"ebin">>, fun(File) ->
-                                                             io:format("Compiling ~s~n", [File]),
-                                                             File
-                                                     end),
-    done.
+    BaseDir = tetrapak:dir(),
+    try
+        ?ElixirCompiler:files_to_path(Files, <<"ebin">>, [{each_file, fun(File) ->
+                                                                              Relative = tpk_file:relative_path(binary_to_list(File), BaseDir),
+                                                                              io:format("Compiling ~s~n", [Relative])
+                                                                      end}]),
+        done
+    catch
+        _:Catch ->
+            tetrapak:fail("** (~s) ~s", [Catch:'__record__'(name), Catch:message()])
+    end.
 
 % --------------------------------------------------------------------------------------------------
 % -- helpers
