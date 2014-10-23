@@ -11,9 +11,11 @@
 -define(BUILDTASKS, [{"build:elixir", ?MODULE, "Compile Elixir modules"}]).
 -define(APPSRCTASK, [{"build:appfile", ?MODULE,"Generate the application resource file"}]).
 -define(ERLANGTASK, [{"build:erlang", ?MODULE, "Donn't compile Erlang modules"}]).
+-define(CORETASK,   [{"build:core_elixir", ?MODULE, "Compile core Elixir modules", [ {run_before, ["build:elixir"]}] }]).
 -define(DEFAULTERLANGTASK, [{"build:erlang", tetrapak_task_erlc, "Compile Erlang modules"}]).
 
--define(ElixirCompiler, 'Elixir.Kernel.ParallelCompiler').
+-define(ElixirCompiler, 'Elixir.Mix.Compilers.Elixir').
+-define(ElixirProject, 'Elixir.Mix.ProjectStack').
 -define(ElixirCode, 'Elixir.Code').
 
 app() ->
@@ -21,27 +23,23 @@ app() ->
     {App, App}.
 
 tasks(tasks) ->
-    BuildTask = task_def(elixir_source_files() =/= [], ?BUILDTASKS),
-    AppsrcTask = task_def(filelib:is_file(tetrapak:path("mix.exs")), ?APPSRCTASK),
-    BuildErlang = case length(BuildTask) > 0 of
-                      true -> task_def(src_not_exists(), ?ERLANGTASK, ?DEFAULTERLANGTASK);
-                      false -> []
-                  end,
-    BuildTask ++ AppsrcTask ++ BuildErlang;
+    CompilerFile = filename:join(["src", "elixir_compiler.erl"]),
+    case filelib:is_file(CompilerFile) of
+        true ->
+            ?BUILDTASKS ++ ?CORETASK;
+        false ->
+            BuildTask   = task_def(elixir_source_files() =/= [], ?BUILDTASKS),
+            AppsrcTask  = task_def(filelib:is_file(tetrapak:path("mix.exs")), ?APPSRCTASK),
+            BuildErlang = task_def(length(BuildTask) > 0, task_def(src_not_exists(), ?ERLANGTASK, ?DEFAULTERLANGTASK)),
+            BuildTask ++ AppsrcTask ++ BuildErlang
+    end;
 
 tasks(before_app_exists_tasks) ->
     [].
 
-check("build:elixir") ->
-    Sources = tpk_file:wildcard("lib", "**/*.ex"),
-    io:format(user, "sources: ~p~n", [Sources]),
-    AllCompiled = [mtime(File) || File <-tpk_file:wildcard("ebin", "*.beam")],
-    SourceMTimes = [mtime(File) || File <- Sources],
-    Filter = fun(CMTime) -> [MTime || MTime <- SourceMTimes, CMTime < MTime] =/= [] end,
-    case lists:filter(Filter, AllCompiled) == [] andalso AllCompiled =/= [] of
-        true -> done;
-        _ -> {needs_run, Sources}
-    end.
+check("build:core_elixir") ->
+    application:set_env(tetrapak_elixir, force_build, true),
+    {needs_run, tetrapak_elixir_core:core_main()}.
 
 run("build:erlang", _) ->
     done;
@@ -49,23 +47,43 @@ run("build:erlang", _) ->
 run("build:appfile", _) ->
     done;
 
-run("build:elixir", StringFiles) ->
-    application:start(elixir),
+run("build:core_elixir", Files) ->
+    tetrapak:require("build:appfile"),
+    application:ensure_all_started(elixir),
+    elixir_code_server:cast({ compiler_options, [{docs,false},{internal,true}] }),
+    [try
+         Lists = elixir_compiler:file(File),
+         [tetrapak_elixir_core:binary_to_path(X, "ebin") || X <- Lists],
+         io:format("Compiled ~ts~n", [File])
+     catch
+         Kind:Reason ->
+             tetrapak:fail("~p: ~p~nstacktrace: ~p~n", [Kind, Reason, erlang:get_stacktrace()])
+     end || File <- Files],
+    done;
+
+run("build:elixir", _) ->
+    application:ensure_all_started(mix),
     file:make_dir(tetrapak:path("ebin")),
     CompileOptions = tetrapak:config("build.elixirc_options", []),
-    ?ElixirCode:compiler_options([{ignore_module_conflict, true} | CompileOptions]),
-    Files = [list_to_binary(File) || File <- StringFiles],
-    BaseDir = tetrapak:dir(),
     try
-        ?ElixirCompiler:files_to_path(Files, <<"ebin">>, [{each_file, fun(File) ->
-                                                                              Relative = tpk_file:relative_path(binary_to_list(File), BaseDir),
-                                                                              io:format("Compiling ~s~n", [Relative])
-                                                                      end}]),
-        done
+        'Elixir.Code':load_file(<<"mix.exs">>) of
+            _ -> ok
     catch
-        _:Catch ->
-            tetrapak:fail("** (~s) ~s", [Catch:'__record__'(name), Catch:message()])
+        error:_ErrorMap1 ->
+            % TODO: erlang .app.src compatibility
+            ok
+    end,
+    ?ElixirCode:compiler_options([{ignore_module_conflict, true} | CompileOptions]),
+    ?ElixirProject:start_link(),
+    try ?ElixirCompiler:compile([<<".compile.elixir">>], [<<"lib">>], [ex], <<"ebin">>, true, fun() -> ok end) of
+        ok ->
+            done
+    catch
+        error:ErrorMap2 ->
+            #{message := Message} = ErrorMap2,
+            tetrapak:fail(Message)
     end.
+
 
 % --------------------------------------------------------------------------------------------------
 % -- helpers
@@ -81,9 +99,3 @@ src_not_exists() ->
 
 elixir_source_files() ->
     tpk_file:exists_in("lib", "*.ex").
-
-mtime(File) ->
-    case file:read_file_info(File) of
-        {error, _} -> {{1970, 1, 1}, {0, 0, 0}};
-        {ok, #file_info{mtime = MTime}} -> MTime
-    end.
