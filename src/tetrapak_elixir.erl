@@ -75,18 +75,24 @@ run("build:elixir", _) ->
     end,
     ?ElixirCode:compiler_options([{ignore_module_conflict, true} | CompileOptions]),
     ?ElixirProject:start_link(),
-    try ?ElixirCompiler:compile([<<".compile.elixir">>], [<<"lib">>], [ex], <<"ebin">>, true, fun() -> ok end) of
+    try compile() of
         ok ->
             done
     catch
-        error:ErrorMap2 ->
-            #{message := Message} = ErrorMap2,
-            tetrapak:fail(Message)
+        Class:Reason ->
+            tetrapak:fail("compilation faild with error: ~p", [{Class, Reason}])
     end.
 
 
 % --------------------------------------------------------------------------------------------------
 % -- helpers
+
+compile() ->
+    code:load_file(?ElixirCompiler),
+    case erlang:function_exported(?ElixirCompiler, compile, 7) of
+        true  -> ?ElixirCompiler:compile([<<".compile.elixir">>], [<<"lib">>], [], [ex], <<"ebin">>, true, fun() -> ok end);
+        false -> ?ElixirCompiler:compile([<<".compile.elixir">>], [<<"lib">>], [ex], <<"ebin">>, true, fun() -> ok end)
+    end.
 
 task_def(Check, Definition) ->
     task_def(Check, Definition, []).
